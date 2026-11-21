@@ -209,6 +209,12 @@ Protobuf 字段和 UMP 封装另外与 [Maasea/YouTube](https://github.com/Maase
 
 当前已验证源码与压缩入口的请求改写及参数保留，未完成 iPhone 实测，不能保证所有客户端都使用此字幕入口。如果字幕请求的签名明确包含 `tlang`，或目标语言/请求格式未知，脚本原样放行。此功能不修改已确认可播放的初始化空视频方案。
 
+### 中英双语字幕（自建后端，2026-11-21）
+
+主插件新增「中英双语字幕」开关和「双语字幕后端」「双语字幕令牌」两个输入项，默认关闭、留空。开启后，请求阶段去掉 `/api/timedtext` 的 `tlang` 拿到原文字幕（排在原生字幕翻译规则之前，开启后优先生效），响应阶段 `src/YouTubeBilingual.js` 把字幕正文、视频 ID 和轨道语言用 `Authorization: Bearer <令牌>` POST 到自建 yt-bilingual 后端的 `/api/mobile/timedtext`，换回同格式的双语字幕：每条原文一行、译文一行，srv3 下原文橙色斜体、译文白色粗体。断句、翻译提示词和频道术语表与桌面 Chrome 插件一致；字幕签名、Cookie 与请求头不会发给后端。
+
+后端地址只接受 HTTPS，令牌至少 16 个字符；中文轨道、YouTube 已机翻的轨道、非 200 响应、后端失败或超时都保留原字幕。目标语言沿用「字幕目标语言」。App 会等待字幕响应，首次打开一段视频最多等约 20 秒，没译完的条目先只显示原文，后台继续翻译，稍后重新打开视频或开关 CC 即得到完整版本。令牌只保存在本机 Loon 设置里，不要写进本仓库。
+
 ### 后台播放开关
 
 主插件的“后台播放”默认关闭。开启后，`YouTubePlayback.js` 在已识别的播放器响应中把后台播放能力设为允许：JSON 同时写入 `playabilityStatus.playableInBackground` 和 `backgroundPlayerRender.backgroundAbility.active`；Protobuf 保留兼容字段 4，并写入 `PlayabilityStatus 字段 11 → BackgroundSupportedRenderer 扩展 64657230 → BackgroundAbility.active（字段 1）`。已有未知字段、播放地址和其他播放状态保持原样；开关关闭时不会修改服务端能力。

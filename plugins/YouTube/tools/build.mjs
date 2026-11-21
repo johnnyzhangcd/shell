@@ -12,7 +12,7 @@ import {runtimeSource} from './runtime-source.mjs';
 
 const root = new URL('../', import.meta.url);
 const names = ['YouTubeFeed', 'YouTubePlayback', 'YouTubeConfig', 'YouTubeLogger'];
-const bundles = {request: ['YouTubeConfig', 'YouTubePlayback', 'YouTubeTranslation', 'YouTubeLogger', 'YouTubeChannelList'], response: names};
+const bundles = {request: ['YouTubeConfig', 'YouTubePlayback', 'YouTubeTranslation', 'YouTubeLogger', 'YouTubeChannelList'], response: [...names, 'YouTubeBilingual']};
 const check = process.argv.includes('--check');
 if (process.argv.slice(2).some(value => value !== '--check')) throw new Error('仅支持 --check 参数');
 
@@ -35,7 +35,8 @@ async function compileScript(phase) {
        if (/\\/youtubei\\/v1\\/(?:config|log_event)(?:\\?[^#]*)?$/i.test(url)) return ${handlers}.YouTubeConfig();
        if (/\\/youtubei\\/v1\\/(?:player|get_watch|player\\/ad_break)(?:\\?[^#]*)?$/i.test(url)) return ${handlers}.YouTubePlayback();
        return ${handlers}.YouTubeLogger();`
-    : `if (/\\/youtubei\\/v1\\/(?:config|log_event)(?:\\?[^#]*)?$/i.test(url)) return ${handlers}.YouTubeConfig();
+    : `if (/\\/api\\/timedtext\\?[^#]+$/i.test(url)) return ${handlers}.YouTubeBilingual();
+       if (/\\/youtubei\\/v1\\/(?:config|log_event)(?:\\?[^#]*)?$/i.test(url)) return ${handlers}.YouTubeConfig();
        if (/\\/youtubei\\/v1\\/(?:browse|next|search)(?:\\?[^#]*)?$/i.test(url)) return ${handlers}.YouTubeFeed();
        if (/\\/youtubei\\/v1\\/(?:player|get_watch|reel\\/reel_watch_sequence)(?:\\?[^#]*)?$/i.test(url)) return ${handlers}.YouTubePlayback();
        return ${handlers}.YouTubeLogger();`;

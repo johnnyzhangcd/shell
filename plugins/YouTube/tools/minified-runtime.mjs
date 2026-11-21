@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const root = new URL('../', import.meta.url);
-const replacements = new Map(['YouTubeFeed', 'YouTubePlayback', 'YouTubeConfig', 'YouTubeLogger', 'YouTubeChannelList'].map(name => [
+const replacements = new Map(['YouTubeFeed', 'YouTubePlayback', 'YouTubeConfig', 'YouTubeLogger', 'YouTubeChannelList', 'YouTubeBilingual'].map(name => [
   fs.readFileSync(new URL(`src/${name}.js`, root), 'utf8'),
   name
 ]));

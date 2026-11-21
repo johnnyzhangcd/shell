@@ -2,7 +2,7 @@
  * 作者：可莉唯一的狗、ChatGPT + GPT-6.0 / GPT-6.1-sol
  * 文件：YouTubeTranslation.js
  * 功能：按手动选择的目标语言请求 YouTube 原生字幕翻译，不读取或保存字幕正文。
- * 更新时间：2026-10-06
+ * 更新时间：2026-11-21（双语模式去掉 tlang）
  * 运行环境：Loon JavaScript
  */
 
@@ -69,6 +69,21 @@ function ytTranslationRewriteUrl(url, target) {
 }
 
 /**
+ * 功能：双语模式需要原文字幕，去掉 App 自带的 tlang 翻译目标；签名包含 tlang 时不改。
+ * 更新时间：2026-11-21
+ * @param {string} url 原始字幕请求地址。
+ * @returns {string|null} 去掉 tlang 后的地址；无需修改时返回空值。
+ */
+function ytTranslationStripUrl(url) {
+  if (!/^https:\/\/(?:www\.|m\.)?youtube\.com\/api\/timedtext\?[^#]+$/i.test(url)) return null;
+  var question = url.indexOf('?'), pieces = url.slice(question + 1).split('&');
+  var signed = ytTranslationQueryValue(pieces, 'sparams');
+  if (signed && /(?:^|,)tlang(?:,|$)/i.test(signed)) return null;
+  var kept = pieces.filter(function (piece) { return piece.split('=')[0].toLowerCase() !== 'tlang'; });
+  return kept.length === pieces.length ? null : url.slice(0, question) + '?' + kept.join('&');
+}
+
+/**
  * 功能：在请求头阶段为已有字幕轨道选择翻译语言，其他请求全部原样放行。
  * 更新时间：2026-10-06
  * @returns {void} 每次仅调用一次 Loon 的完成接口。
@@ -77,9 +92,11 @@ function ytTranslationMain() {
   var request = typeof $request === 'object' && $request ? $request : null;
   var args = typeof $argument === 'object' && $argument ? $argument : null;
   var enabled = args && (args.translation_enabled === true || args.translation_enabled === 'true');
+  var bilingual = args && (args.bilingual_enabled === true || args.bilingual_enabled === 'true');
   var target = enabled ? ytTranslationTarget(args.translation_target) : null;
-  if (typeof $response !== 'undefined' || !request || String(request.method || '').toUpperCase() !== 'GET' || !target) return $done({});
-  var rewritten = ytTranslationRewriteUrl(String(request.url || ''), target);
+  if (typeof $response !== 'undefined' || !request || String(request.method || '').toUpperCase() !== 'GET' || (!target && !bilingual)) return $done({});
+  // 双语字幕优先：请求原文字幕，由响应阶段的 YouTubeBilingual 合成双语。
+  var rewritten = bilingual ? ytTranslationStripUrl(String(request.url || '')) : ytTranslationRewriteUrl(String(request.url || ''), target);
   $done(rewritten ? {url: rewritten} : {});
 }
 

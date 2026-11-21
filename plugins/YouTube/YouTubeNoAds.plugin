@@ -1,16 +1,19 @@
 #!name = YouTube去广告
 #!author = 可莉唯一的狗、ChatGPT + GPT-6.0 / GPT-6.1-sol
 # 作者：可莉唯一的狗、ChatGPT + GPT-6.0 / GPT-6.1-sol
-#!desc = YouTube App 去广告、后台播放及已有字幕轨道的翻译；字幕目标语言可选 zh-CN 或 en-US，无字幕视频无法翻译。日志默认仅采集媒体响应头，可选完整采样会增加等待。需开启 MitM 并信任证书。
-#!icon = https://raw.githubusercontent.com/teaoea/shell/main/plugins/YouTube/assets/youtube.png
-#!homepage = https://github.com/teaoea/shell/blob/main/plugins/YouTube/README.md
+#!desc = YouTube App 去广告、后台播放、已有字幕轨道的翻译及自建后端中英双语字幕；字幕目标语言可选 zh-CN 或 en-US，无字幕视频无法翻译。日志默认仅采集媒体响应头，可选完整采样会增加等待。需开启 MitM 并信任证书。
+#!icon = https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/assets/youtube.png
+#!homepage = https://github.com/johnnyzhangcd/shell/blob/main/plugins/YouTube/README.md
 #!tag = YouTube,去广告,开发日志
 
 [Argument]
 background_playback = switch,false,tag=后台播放,desc=开启后允许普通视频在切换 App 或锁屏后继续播放音频；直播和受限内容仍由 YouTube 决定
 playback_region = select,"original","CN","HK","TW","US","JP","KR","SG","GB","DE","RU",tag=播放请求地区,desc=original 保持原地区；CN 中国大陆；仅修改客户端 gl 参数，不改变出口 IP，去广告效果待验证
 translation_enabled = switch,false,tag=字幕翻译,desc=开启后将已有字幕翻译为所选目标语言；关闭时保留原字幕请求
-translation_target = select,"zh-CN","en-US",tag=字幕目标语言,desc=仅转换已有字幕轨道；简体中文 zh-CN 或美式英语 en-US；无字幕的视频无法翻译，不改变音轨、标题或简介
+translation_target = select,"zh-CN","en-US",tag=字幕目标语言,desc=仅转换已有字幕轨道；简体中文 zh-CN 或美式英语 en-US；无字幕的视频无法翻译，不改变音轨、标题或简介；双语字幕也使用此目标
+bilingual_enabled = switch,false,tag=中英双语字幕,desc=开启后把原文字幕交给自建 yt-bilingual 后端，显示原文加译文两行；优先于原生字幕翻译；中文视频保持原字幕；需填写后端地址和令牌
+bilingual_backend = input,"",tag=双语字幕后端,desc=自建 yt-bilingual 后端的 HTTPS 地址，例如 https://example.com；仅发送字幕正文、视频 ID 和语言
+bilingual_token = input,"",tag=双语字幕令牌,desc=后端 .env 中的 API_TOKEN，至少 16 个字符；只保存在本机 Loon，不要写进公开仓库
 hide_home_shorts = switch,false,tag=隐藏首页 Shorts,desc=开启后移除首页 Shorts 推荐区；保留底部 Shorts 入口和其他页面
 blocked_channels = input,"",tag=UP 主屏蔽名单,desc=多个频道 ID、@账号或完整频道名称用空格分隔；优先使用频道 ID，名称含空格请用账号或 ID；留空不生效，仅隐藏能识别归属的视频
 blocked_channels_url = input,"",tag=远程 UP 主名单 URL,desc=填写公开 HTTPS 文本直链如 GitHub Raw；每小时更新本地缓存，也可运行更新名单脚本；与手动名单合并，留空停用远程名单
@@ -39,24 +42,30 @@ request if ${url} ~= /^https:\/\/[a-z0-9-]+\.googlevideo\.com\/initplayback(?:\?
 [Script]
 # 功能：独立更新频道名单缓存；信息流脚本只读缓存，不等待远程下载。
 # 更新时间：2026-10-07
-cron "0 * * * *" script-path=https://raw.githubusercontent.com/teaoea/shell/main/plugins/YouTube/dist/request.min.js,timeout=10,argument=[{blocked_channels_url}],tag=YouTube 定时更新 UP 主名单
-generic script-path=https://raw.githubusercontent.com/teaoea/shell/main/plugins/YouTube/dist/request.min.js,timeout=10,argument=[{blocked_channels_url}],tag=YouTube 更新 UP 主名单,img-url=person.crop.circle.badge.xmark.system
-http-request ^https:\/\/(?:www\.|m\.)?youtube\.com\/api\/timedtext\?[^#]+$ script-path=https://raw.githubusercontent.com/teaoea/shell/main/plugins/YouTube/dist/request.min.js,requires-body=false,timeout=10,enable={translation_enabled},argument=[{translation_enabled},{translation_target}],tag=YouTube 字幕目标语言
+cron "0 * * * *" script-path=https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/request.min.js,timeout=10,argument=[{blocked_channels_url}],tag=YouTube 定时更新 UP 主名单
+generic script-path=https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/request.min.js,timeout=10,argument=[{blocked_channels_url}],tag=YouTube 更新 UP 主名单,img-url=person.crop.circle.badge.xmark.system
+# 功能：双语字幕需要原文字幕，请求阶段去掉 tlang；必须排在原生字幕翻译之前，开启后优先生效。
+# 更新时间：2026-11-21
+http-request ^https:\/\/(?:www\.|m\.)?youtube\.com\/api\/timedtext\?[^#]+$ script-path=https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/request.min.js,requires-body=false,timeout=10,enable={bilingual_enabled},argument=[{bilingual_enabled}],tag=YouTube 双语字幕请求原文
+# 功能：把原文字幕交给自建后端合成中英双语；后端失败或超时则保留原字幕。首次打开最多等待约 20 秒，未译完部分只显示原文，稍后重开视频即为完整版本。
+# 更新时间：2026-11-21
+http-response ^https:\/\/(?:www\.|m\.)?youtube\.com\/api\/timedtext\?[^#]+$ script-path=https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/response.min.js,requires-body=true,timeout=35,enable={bilingual_enabled},argument=[{bilingual_enabled},{translation_target},{bilingual_backend},{bilingual_token}],tag=YouTube 中英双语字幕
+http-request ^https:\/\/(?:www\.|m\.)?youtube\.com\/api\/timedtext\?[^#]+$ script-path=https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/request.min.js,requires-body=false,timeout=10,enable={translation_enabled},argument=[{translation_enabled},{translation_target}],tag=YouTube 字幕目标语言
 # 功能：仅显式开启日志及画质研究时读取 videoplayback POST；不命中初始化空视频。
 # 更新时间：2026-10-07；必须在普通日志入口前匹配，默认不增加正文缓冲。
-request if ${url} ~= /^https:\/\/[\w-]+\.googlevideo\.com\/videoplayback(?:\?[^#]*)?$/i && ${request.method} == "POST" && ${log_enabled} == true && ${quality_research} == true then script("https://raw.githubusercontent.com/teaoea/shell/main/plugins/YouTube/dist/request.min.js", {${log_enabled}, ${log_level}, ${capture_budget}, ${quality_research}}) with requires_body=true, binary_body_mode=true, timeout=10, tag="YouTube 画质研究请求采样"
-http-request ^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.|music\.)?youtube\.com)\/youtubei\/v1\/(?:browse|next|search|reel\/reel_watch_sequence)(?:\?[^#]*)?$|^https:\/\/[\w-]+\.googlevideo\.com\/videoplayback\?[^#]*$|^http:\/\/youtube-logs\.invalid(?::80)?(?:\/[^#]*)?$|^https:\/\/[\w-]+\.googlevideo\.com\/initplayback(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/teaoea/shell/main/plugins/YouTube/dist/request.min.js,requires-body=false,timeout=10,enable={log_enabled},argument=[{log_enabled},{log_level},{capture_budget},{background_playback},{media_capture_mode},{quality_research}],tag=YouTube 日志记录与导出
-http-request ^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.)?youtube\.com)\/youtubei\/v1\/log_event(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/teaoea/shell/main/plugins/YouTube/dist/request.min.js,requires-body=true,binary-body-mode=true,timeout=10,argument=[{log_enabled},{log_level},{capture_budget},{playback_region}],tag=YouTube 配置请求处理
+request if ${url} ~= /^https:\/\/[\w-]+\.googlevideo\.com\/videoplayback(?:\?[^#]*)?$/i && ${request.method} == "POST" && ${log_enabled} == true && ${quality_research} == true then script("https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/request.min.js", {${log_enabled}, ${log_level}, ${capture_budget}, ${quality_research}}) with requires_body=true, binary_body_mode=true, timeout=10, tag="YouTube 画质研究请求采样"
+http-request ^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.|music\.)?youtube\.com)\/youtubei\/v1\/(?:browse|next|search|reel\/reel_watch_sequence)(?:\?[^#]*)?$|^https:\/\/[\w-]+\.googlevideo\.com\/videoplayback\?[^#]*$|^http:\/\/youtube-logs\.invalid(?::80)?(?:\/[^#]*)?$|^https:\/\/[\w-]+\.googlevideo\.com\/initplayback(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/request.min.js,requires-body=false,timeout=10,enable={log_enabled},argument=[{log_enabled},{log_level},{capture_budget},{background_playback},{media_capture_mode},{quality_research}],tag=YouTube 日志记录与导出
+http-request ^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.)?youtube\.com)\/youtubei\/v1\/log_event(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/request.min.js,requires-body=true,binary-body-mode=true,timeout=10,argument=[{log_enabled},{log_level},{capture_budget},{playback_region}],tag=YouTube 配置请求处理
 # 媒体采样受日志工具总开关控制：关闭后 headers/full 均不执行；保存的方式选项不代表正在采样。
 # 完整采样需在正文接收前选定；同一响应只执行第一条命中的脚本。默认响应头入口不传 full，避免误读正文。
-response if ${url} ~= /^https:\/\/[\w-]+\.googlevideo\.com\/(?:videoplayback|initplayback)(?:\?[^#]*)?$/i && ${log_enabled} == true && ${media_capture_mode} == "full" then script("https://raw.githubusercontent.com/teaoea/shell/main/plugins/YouTube/dist/response.min.js", {${log_enabled}, ${log_level}, ${capture_budget}, ${media_capture_mode}}) with requires_body=true, binary_body_mode=true, timeout=30, tag="YouTube 完整媒体开发采样"
-http-response ^https:\/\/[\w-]+\.googlevideo\.com\/(?:videoplayback|initplayback)(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/teaoea/shell/main/plugins/YouTube/dist/response.min.js,requires-body=false,timeout=10,enable={log_enabled},argument=[{log_enabled},{log_level},{capture_budget}],tag=YouTube 日志媒体响应记录
-http-response ^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.)?youtube\.com)\/youtubei\/v1\/(?:config|log_event)(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/teaoea/shell/main/plugins/YouTube/dist/response.min.js,requires-body=true,binary-body-mode=true,timeout=10,argument=[{log_enabled},{log_level},{capture_budget}],tag=YouTube Onesie 配置缓存
+response if ${url} ~= /^https:\/\/[\w-]+\.googlevideo\.com\/(?:videoplayback|initplayback)(?:\?[^#]*)?$/i && ${log_enabled} == true && ${media_capture_mode} == "full" then script("https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/response.min.js", {${log_enabled}, ${log_level}, ${capture_budget}, ${media_capture_mode}}) with requires_body=true, binary_body_mode=true, timeout=30, tag="YouTube 完整媒体开发采样"
+http-response ^https:\/\/[\w-]+\.googlevideo\.com\/(?:videoplayback|initplayback)(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/response.min.js,requires-body=false,timeout=10,enable={log_enabled},argument=[{log_enabled},{log_level},{capture_budget}],tag=YouTube 日志媒体响应记录
+http-response ^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.)?youtube\.com)\/youtubei\/v1\/(?:config|log_event)(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/response.min.js,requires-body=true,binary-body-mode=true,timeout=10,argument=[{log_enabled},{log_level},{capture_budget}],tag=YouTube Onesie 配置缓存
 
-http-request ^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.|music\.)?youtube\.com)\/youtubei\/v1\/(?:player|get_watch)(?:\?[^#]*)?$|^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.|music\.)?youtube\.com)\/youtubei\/v1\/player\/ad_break(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/teaoea/shell/main/plugins/YouTube/dist/request.min.js,requires-body=true,binary-body-mode=true,timeout=10,argument=[{log_enabled},{log_level},{capture_budget},{playback_region}],tag=YouTube 播放请求与广告配置处理
+http-request ^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.|music\.)?youtube\.com)\/youtubei\/v1\/(?:player|get_watch)(?:\?[^#]*)?$|^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.|music\.)?youtube\.com)\/youtubei\/v1\/player\/ad_break(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/request.min.js,requires-body=true,binary-body-mode=true,timeout=10,argument=[{log_enabled},{log_level},{capture_budget},{playback_region}],tag=YouTube 播放请求与广告配置处理
 
-http-response ^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.|music\.)?youtube\.com)\/youtubei\/v1\/(browse|next|search)(\?[^#]*)?$ script-path=https://raw.githubusercontent.com/teaoea/shell/main/plugins/YouTube/dist/response.min.js,requires-body=true,binary-body-mode=true,timeout=10,argument=[{log_enabled},{log_level},{capture_budget},{hide_home_shorts},{blocked_channels},{blocked_channels_url}],tag=YouTube 信息流广告与首页 Shorts 处理
-http-response ^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.|music\.)?youtube\.com)\/youtubei\/v1\/(player|get_watch)(\?[^#]*)?$|^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.|music\.)?youtube\.com)\/youtubei\/v1\/reel\/reel_watch_sequence(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/teaoea/shell/main/plugins/YouTube/dist/response.min.js,requires-body=true,binary-body-mode=true,timeout=10,argument=[{log_enabled},{log_level},{capture_budget},{background_playback},{quality_research}],tag=YouTube 播放响应与后台播放
+http-response ^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.|music\.)?youtube\.com)\/youtubei\/v1\/(browse|next|search)(\?[^#]*)?$ script-path=https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/response.min.js,requires-body=true,binary-body-mode=true,timeout=10,argument=[{log_enabled},{log_level},{capture_budget},{hide_home_shorts},{blocked_channels},{blocked_channels_url}],tag=YouTube 信息流广告与首页 Shorts 处理
+http-response ^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.|music\.)?youtube\.com)\/youtubei\/v1\/(player|get_watch)(\?[^#]*)?$|^https:\/\/(?:youtubei(?:-att)?\.googleapis\.com|(?:www\.|m\.|music\.)?youtube\.com)\/youtubei\/v1\/reel\/reel_watch_sequence(?:\?[^#]*)?$ script-path=https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/response.min.js,requires-body=true,binary-body-mode=true,timeout=10,argument=[{log_enabled},{log_level},{capture_budget},{background_playback},{quality_research}],tag=YouTube 播放响应与后台播放
 
 
 [Mitm]
