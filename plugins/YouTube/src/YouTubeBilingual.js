@@ -1,7 +1,7 @@
 /**
- * 作者：可莉唯一的狗、ChatGPT + GPT-6.0 / GPT-6.1-sol、Claude
+ * 作者：Johnny 自用
  * 文件：YouTubeBilingual.js
- * 功能：把 App 刚下载的原文字幕交给自建 yt-bilingual 后端，换回同格式的中英双语字幕。
+ * 功能：把 App 刚下载的原文字幕交给自建 yt-bilingual 后端，换回同格式的译文字幕（手机屏幕小，只显示译文，没译完的条目先显示原文）。
  * 更新时间：2026-11-21
  * 运行环境：Loon JavaScript（响应阶段，需要正文）
  */
@@ -60,7 +60,7 @@ function ytBilingualMain() {
   var request = typeof $request === 'object' && $request ? $request : null;
   var response = typeof $response === 'object' && $response ? $response : null;
   var args = typeof $argument === 'object' && $argument ? $argument : {};
-  var enabled = args.bilingual_enabled === true || args.bilingual_enabled === 'true';
+  var enabled = args.translation_enabled === true || args.translation_enabled === 'true';
   var backend = ytBilingualBackend(args.bilingual_backend);
   var token = typeof args.bilingual_token === 'string' ? args.bilingual_token.trim() : '';
   if (!request || !response || !enabled || !backend || !/^[\x21-\x7e]{16,256}$/.test(token) || typeof $httpClient === 'undefined') return $done({});
@@ -79,7 +79,7 @@ function ytBilingualMain() {
   $httpClient.post({
     url: backend + '/api/mobile/timedtext',
     headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
-    body: JSON.stringify({video_id: video, lang: lang, target: target, body: body, wait: 20}),
+    body: JSON.stringify({video_id: video, lang: lang, target: target, body: body, wait: 10, display: 'translation'}),
     timeout: 30000
   }, /** 功能：用后端结果替换正文；失败时保留原字幕。更新时间：2026-11-21。 */ function (error, resp, data) {
     try {

@@ -21,7 +21,7 @@ function run(code, {url = 'https://www.youtube.com/api/timedtext?v=abcdefghijk&l
   vm.runInNewContext(code, {
     $request: {url, method: 'GET', headers: {}},
     $response: {status, headers: {'Content-Type': 'text/xml'}, body},
-    $argument: {bilingual_enabled: true, bilingual_backend: 'https://sub.example.com/', bilingual_token: TOKEN, translation_target: 'zh-CN', ...args},
+    $argument: {translation_enabled: true, bilingual_backend: 'https://sub.example.com/', bilingual_token: TOKEN, translation_target: 'zh-CN', ...args},
     $persistentStore: {read() { return null; }, write() { throw Error('不应写存储'); }},
     $httpClient: {post(options, callback) { sent.push(options); const r = reply ?? [null, {status: 200}, JSON.stringify({body: 'BILINGUAL', done: true})]; callback(...r); }},
     console: {log() {}},
@@ -40,7 +40,7 @@ for (const code of [source, published]) {
     assert.equal(sent[0].url, 'https://sub.example.com/api/mobile/timedtext');
     assert.equal(sent[0].headers.Authorization, 'Bearer ' + TOKEN);
     const payload = JSON.parse(sent[0].body);
-    assert.deepEqual({...payload, body: undefined}, {video_id: 'abcdefghijk', lang: 'en', target: 'zh-CN', body: undefined, wait: 20});
+    assert.deepEqual({...payload, body: undefined}, {video_id: 'abcdefghijk', lang: 'en', target: 'zh-CN', body: undefined, wait: 10, display: 'translation'});
     assert.equal(payload.body, SRV3);
     assert.ok(!sent[0].body.includes('PRIVATE'), '不发送字幕签名');
   });
@@ -51,7 +51,7 @@ for (const code of [source, published]) {
   });
   test(`${variant} 未开启、缺少配置、中文轨道、机翻轨道和非 200 不请求后端`, () => {
     for (const options of [
-      {args: {bilingual_enabled: false}},
+      {args: {translation_enabled: false}},
       {args: {bilingual_backend: ''}},
       {args: {bilingual_backend: 'http://sub.example.com'}},
       {args: {bilingual_token: 'short'}},
@@ -83,24 +83,25 @@ function request(code, url, args) {
 
 for (const code of [translation, requestBundle]) {
   const variant = code === translation ? '源码' : '压缩入口';
-  test(`${variant} 双语模式请求原文字幕：去掉 tlang，优先于原生翻译`, () => {
+  test(`${variant} 填写后端时请求原文字幕（去掉 tlang），留空则用原生翻译，关闭则不改`, () => {
     const url = 'https://www.youtube.com/api/timedtext?v=abc&lang=ja&tlang=zh-Hans&fmt=srv3&sig=xyz';
-    assert.deepEqual(request(code, url, {bilingual_enabled: true}), {url: 'https://www.youtube.com/api/timedtext?v=abc&lang=ja&fmt=srv3&sig=xyz'});
-    assert.deepEqual(request(code, url, {bilingual_enabled: 'true', translation_enabled: true, translation_target: 'zh-CN'}), {url: 'https://www.youtube.com/api/timedtext?v=abc&lang=ja&fmt=srv3&sig=xyz'});
-    assert.deepEqual(request(code, 'https://www.youtube.com/api/timedtext?v=abc&lang=ja', {bilingual_enabled: true}), {});
-    assert.deepEqual(request(code, 'https://www.youtube.com/api/timedtext?lang=ja&tlang=zh-Hans&sparams=expire%2Ctlang', {bilingual_enabled: true}), {});
+    const ai = {translation_enabled: true, translation_target: 'zh-CN', bilingual_backend: 'https://sub.example.com', bilingual_token: TOKEN};
+    assert.deepEqual(request(code, url, ai), {url: 'https://www.youtube.com/api/timedtext?v=abc&lang=ja&fmt=srv3&sig=xyz'});
+    assert.deepEqual(request(code, 'https://www.youtube.com/api/timedtext?v=abc&lang=ja', ai), {});
+    assert.deepEqual(request(code, 'https://www.youtube.com/api/timedtext?lang=ja&tlang=zh-Hans&sparams=expire%2Ctlang', ai), {});
+    assert.deepEqual(request(code, 'https://www.youtube.com/api/timedtext?v=abc&lang=ja', {...ai, bilingual_backend: ''}), {url: 'https://www.youtube.com/api/timedtext?v=abc&lang=ja&tlang=zh-Hans'});
+    assert.deepEqual(request(code, url, {...ai, translation_enabled: false}), {});
   });
 }
 
-test('插件的双语规则：请求去 tlang 在原生翻译前，响应读取正文并传入后端和令牌参数', () => {
+test('插件只有一个字幕翻译开关：请求和响应规则都由它启用并传入后端和令牌', () => {
   const plugin = fs.readFileSync(new URL('YouTubeNoAds.plugin', root), 'utf8');
-  for (const key of ['bilingual_enabled = switch,false,', 'bilingual_backend = input,"",', 'bilingual_token = input,"",']) assert.ok(plugin.includes(key));
+  for (const key of ['bilingual_backend = input,"",', 'bilingual_token = input,"",']) assert.ok(plugin.includes(key));
+  assert.ok(!plugin.includes('bilingual_enabled') && !plugin.includes('bilingual_display'));
   const lines = plugin.split('\n');
-  const strip = lines.findIndex(l => l.includes('tag=YouTube 双语字幕请求原文'));
-  const native = lines.findIndex(l => l.includes('tag=YouTube 字幕目标语言'));
-  assert.ok(strip >= 0 && strip < native);
-  assert.match(lines[strip], /^http-request .*request\.min\.js,requires-body=false,.*enable=\{bilingual_enabled\}/);
-  const resp = lines.find(l => l.includes('tag=YouTube 中英双语字幕'));
-  assert.match(resp, /^http-response .*response\.min\.js,requires-body=true,timeout=35,enable=\{bilingual_enabled\},argument=\[\{bilingual_enabled\},\{translation_target\},\{bilingual_backend\},\{bilingual_token\}\]/);
+  const req = lines.find(l => l.includes('tag=YouTube 字幕目标语言'));
+  assert.match(req, /^http-request .*request\.min\.js,requires-body=false,.*enable=\{translation_enabled\},argument=\[\{translation_enabled\},\{translation_target\},\{bilingual_backend\},\{bilingual_token\}\]/);
+  const resp = lines.find(l => l.includes('tag=YouTube AI 字幕翻译'));
+  assert.match(resp, /^http-response .*response\.min\.js,requires-body=true,timeout=35,enable=\{translation_enabled\},argument=\[\{translation_enabled\},\{translation_target\},\{bilingual_backend\},\{bilingual_token\}\]/);
   assert.ok(!/bilingual_token = input,"[^"]/.test(plugin), '令牌不能有默认值');
 });

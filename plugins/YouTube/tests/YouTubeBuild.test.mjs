@@ -45,7 +45,7 @@ test('the two published bundles reproduce exactly from current sources and pinne
 test('every plugin rule uses the bundle for its actual phase', () => {
   const plugin = fs.readFileSync(new URL('YouTubeNoAds.plugin', root), 'utf8');
   const lines = plugin.split('\n').filter(line => line.startsWith('http-request ') || line.startsWith('http-response ') || line.startsWith('response if ') || line.startsWith('request if ') && line.includes(' then script('));
-  assert.equal(lines.length, 12);
+  assert.equal(lines.length, 11);
   for (const line of lines) {
     const phase = line.startsWith('http-request ') || line.startsWith('request if ') ? 'request' : 'response';
     assert.ok(line.includes(`https://raw.githubusercontent.com/johnnyzhangcd/shell/main/plugins/YouTube/dist/${phase}.min.js`));

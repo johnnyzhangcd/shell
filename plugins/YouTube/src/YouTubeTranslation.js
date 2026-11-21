@@ -2,7 +2,7 @@
  * 作者：可莉唯一的狗、ChatGPT + GPT-6.0 / GPT-6.1-sol
  * 文件：YouTubeTranslation.js
  * 功能：按手动选择的目标语言请求 YouTube 原生字幕翻译，不读取或保存字幕正文。
- * 更新时间：2026-11-21（双语模式去掉 tlang）
+ * 更新时间：2026-11-21（填写自建后端时去掉 tlang）
  * 运行环境：Loon JavaScript
  */
 
@@ -69,7 +69,7 @@ function ytTranslationRewriteUrl(url, target) {
 }
 
 /**
- * 功能：双语模式需要原文字幕，去掉 App 自带的 tlang 翻译目标；签名包含 tlang 时不改。
+ * 功能：AI 翻译需要原文字幕，去掉 App 自带的 tlang 翻译目标；签名包含 tlang 时不改。
  * 更新时间：2026-11-21
  * @param {string} url 原始字幕请求地址。
  * @returns {string|null} 去掉 tlang 后的地址；无需修改时返回空值。
@@ -92,10 +92,11 @@ function ytTranslationMain() {
   var request = typeof $request === 'object' && $request ? $request : null;
   var args = typeof $argument === 'object' && $argument ? $argument : null;
   var enabled = args && (args.translation_enabled === true || args.translation_enabled === 'true');
-  var bilingual = args && (args.bilingual_enabled === true || args.bilingual_enabled === 'true');
   var target = enabled ? ytTranslationTarget(args.translation_target) : null;
-  if (typeof $response !== 'undefined' || !request || String(request.method || '').toUpperCase() !== 'GET' || (!target && !bilingual)) return $done({});
-  // 双语字幕优先：请求原文字幕，由响应阶段的 YouTubeBilingual 合成双语。
+  // 填写了自建后端和令牌时改用 AI 翻译：请求原文字幕，由响应阶段的 YouTubeBilingual 交给后端翻译。
+  var bilingual = !!target && typeof args.bilingual_backend === 'string' && /^https:\/\/[a-z0-9.-]+/i.test(args.bilingual_backend.trim())
+    && typeof args.bilingual_token === 'string' && /^[\x21-\x7e]{16,256}$/.test(args.bilingual_token.trim());
+  if (typeof $response !== 'undefined' || !request || String(request.method || '').toUpperCase() !== 'GET' || !target) return $done({});
   var rewritten = bilingual ? ytTranslationStripUrl(String(request.url || '')) : ytTranslationRewriteUrl(String(request.url || ''), target);
   $done(rewritten ? {url: rewritten} : {});
 }

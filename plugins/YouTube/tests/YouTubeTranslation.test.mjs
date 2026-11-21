@@ -61,7 +61,7 @@ test('插件只提供两个目标语言并在请求头阶段调用现有请求�
   assert.ok(line?.startsWith('http-request '));
   assert.match(line, /dist\/request\.min\.js/);
   assert.match(line, /requires-body=false/);
-  assert.match(line, /argument=\[\{translation_enabled\},\{translation_target\}\]/);
+  assert.match(line, /argument=\[\{translation_enabled\},\{translation_target\},\{bilingual_backend\},\{bilingual_token\}\]/);
 });
 
 test('all native configurations default optional playback, logging and translation off',()=>{
